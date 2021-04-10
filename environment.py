@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import gym
 from gym import spaces
 import numpy as np
@@ -24,6 +26,7 @@ class OthelloEnv(gym.Env):
     def __init__(self, n=8):
         
         self.done = False
+        self.turn_passed = False # True when a player passes turn because no valid moves
         self.observation_space = spaces.Box(low = -1, high = 1, shape = (n, n), dtype = int)
         self.action_space = spaces.Discrete(n*n)
         self.n = n
@@ -36,7 +39,7 @@ class OthelloEnv(gym.Env):
         self.board[self.n//2-1, self.n//2-1] = self.board[self.n//2, self.n//2] = WHITE
         
         self.turn = WHITE
-        self.get_valid_moves(self.turn)
+        self.valid_moves = self.get_valid_moves(self.turn)
         self.done = False
         
         return self.board
@@ -47,24 +50,34 @@ class OthelloEnv(gym.Env):
         assert action in self.valid_moves, "Invalid move"
         self.board[action] = self.turn
         self.flip(action)
-        self.get_valid_moves(-self.turn)
+        self.valid_moves = self.get_valid_moves(-self.turn)
         
         # Calculate the reward for the new state
         score = self.score()
-        self.done = score is not None
+        self.done = (score is not None) and self.turn_passed
+        self.turn_passed = score is not None
         self.reward = score if self.done else 0
         
         self.turn *= -1
+        
+        if self.turn_passed:
+            self.turn *= -1
+            self.valid_moves = self.get_valid_moves(self.turn)
+            self.done = len(self.valid_moves) == 0
         
         return self.board, self.reward, self.done, {'turn': self.turn}
     
     def score(self):
         
         white, black, empty = self.do_count()
-
-        if white == 0 or black == 0 or empty == 0 or len(self.valid_moves) == 0:
-            return (white - black) / self.n**2
         
+        if empty == 0:
+            self.turn_passed = True
+            return (white - black) / self.n**2
+
+        if white == 0 or black == 0 or len(self.valid_moves) == 0:
+            return (white - black) / self.n**2
+
         return None
     
     def get_valid_moves(self, color):
@@ -79,7 +92,6 @@ class OthelloEnv(gym.Env):
                     places.append(p)
                     
         places = list(set(places))
-        self.valid_moves = places
         
         return places
     
@@ -147,10 +159,10 @@ class OthelloEnv(gym.Env):
     def render(self):
         
         return '\n'.join([''.join([ASCII.getsymbol(value) for value in row]) for row in self.board])
-    
+      
     def coord2ind(self, coord):
         x, y = coord
         return x * self.n + y
-    
+
     def ind2coord(self, ind):
         return (ind // self.n, ind % self.n)
